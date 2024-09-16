@@ -25,10 +25,22 @@ void twiInitialise(uint8_t bitRateGenerator) {
 
 }
 
+//  TWI_INT interrupt service routine
+ISR(TWI_vect) {
+
+  //  Start condition has been transmitted
+  Serial.writeln("Start condition transmitted");
+
+}
+
+
 void setup() {
   // Setup I2C registers for recieving data, initialise variables, set digital I/O pins
-
   
+  sei();
+
+  twiInitialise(18);
+
   pinMode(4, OUTPUT);
 
 }
