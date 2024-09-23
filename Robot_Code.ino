@@ -5,6 +5,7 @@
 #include <avr/interrupt.h>
 
 #define CPU_clock 16000000
+#define SLAVE_ADDRESS 104
 
 //#include <Wire.h> // The Wire library is what Arduino uses to communicate with I2C devices however I will be creating my own I2C driver
 
@@ -28,8 +29,26 @@ void twiInitialise(uint8_t bitRateGenerator) {
 //  TWI_INT interrupt service routine
 ISR(TWI_vect) {
 
-  //  Start condition has been transmitted
-  Serial.writeln("Start condition transmitted");
+  switch(TWSR) {
+
+    case 8:
+      //  Start condition has been transmitted
+      Serial.println("Start condition transmitted");
+
+      // load SLA + W
+      TWDR = (SLAVE_ADDRESS << 1);
+
+      break;
+
+    case 16:
+
+      break;
+
+    default:
+
+      break;
+  }
+ 
 
 }
 
