@@ -29,11 +29,14 @@ void twiInitialise(uint8_t bitRateGenerator) {
 //  TWI_INT interrupt service routine
 ISR(TWI_vect) {
 
+  Serial.println("Interrupt executed");
+
+  // We are reading the gyroscopes measurements
   switch(TWSR) {
 
     case 8:
       //  Start condition has been transmitted
-      Serial.println("Start condition transmitted");
+      Serial.println("Start condition transmitted, load SLA+W");
 
       // load SLA + W
       TWDR = (SLAVE_ADDRESS << 1);
@@ -44,10 +47,26 @@ ISR(TWI_vect) {
 
       break;
 
+    case 24:
+      // SLA+W has been transmitted; ACK has been received, load data byte
+
+
+      Serial.println("SLA+W has been transmitted; ACK has been received, load data byte");
+
+      break;
+
     default:
 
       break;
   }
+
+  Serial.print("Value of TWCR: ");
+  Serial.println(TWCR);
+
+  Serial.print("Value of TWSR: ");
+  Serial.println(TWSR);
+
+  TWCR = SET_TWINT; // Setting TWINT so we stop setting TWINT flag
  
 
 }
