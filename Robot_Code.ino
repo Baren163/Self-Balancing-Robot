@@ -7,6 +7,10 @@
 #define CPU_clock 16000000
 #define SLAVE_ADDRESS 104
 
+#define SEND_START_CONDITION 101
+#define TWCR_INITIALISE 69
+#define SET_TWINT 197
+
 //#include <Wire.h> // The Wire library is what Arduino uses to communicate with I2C devices however I will be creating my own I2C driver
 
 // TWI Functions
@@ -37,6 +41,8 @@ ISR(TWI_vect) {
     case 8:
       //  Start condition has been transmitted
       Serial.println("Start condition transmitted, load SLA+W");
+
+      TWCR = TWCR_INITIALISE;  // Clearing the start bit so we don't transmit another one
 
       // load SLA + W
       TWDR = (SLAVE_ADDRESS << 1);
@@ -86,9 +92,19 @@ void setup() {
 void loop() {
  // Set I2C recieved data to variables, calculate angle of rotational displacement for the X axis, Implement PID control for motor speed
 
+  delay(200);
+
+  TWCR = SEND_START_CONDITION;   // Setting control register bits
+
   digitalWrite(4, HIGH);
   delay(500);
   digitalWrite(4, LOW);
   delay(500);
+
+  Serial.print("Gyro value = ");
+  Serial.println(gyroValue);
+  Serial.println(TWCR);
+  Serial.println(TWSTA);
+  Serial.println(TWSR)
   
 }
