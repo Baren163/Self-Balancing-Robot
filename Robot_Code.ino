@@ -6,10 +6,15 @@
 
 #define CPU_clock 16000000
 #define SLAVE_ADDRESS 104
+#define GYRO_XOUT_H 67
+#define GYRO_XOUT_L 68
 
 #define SEND_START_CONDITION 101
 #define TWCR_INITIALISE 69
 #define SET_TWINT 197
+#define SEND_STOP_CONDITION 85
+
+uint16_t gyroValue;
 
 //#include <Wire.h> // The Wire library is what Arduino uses to communicate with I2C devices however I will be creating my own I2C driver
 
@@ -38,13 +43,14 @@ ISR(TWI_vect) {
   switch(TWSR) {
 
     case 8:
-      //  Start condition has been transmitted
-      Serial.println("Start condition transmitted, load SLA+W");
+      //  Start condition has been transmitted, load SLA+W
+      TWDR &= 0;  // Clear data register
+
+      TWDR = (SLAVE_ADDRESS << 1); // Load SLA+W, W = 0
 
       TWCR = TWCR_INITIALISE;  // Clearing the start bit so we don't transmit another one
 
-      // load SLA + W
-      TWDR = (SLAVE_ADDRESS << 1);
+      Serial.println("Start condition has been transmitted, load SLA+W");
 
       break;
 
@@ -81,7 +87,11 @@ ISR(TWI_vect) {
       break;
 
     case 64:
+      // SLA+R has been transmitted; ACK has been received, return ACK to continue reading (increment register to GYRO_XOUT_L)
 
+      TWCR = TWCR_INITIALISE;  //  Make Sure ACK is sent after data is received
+
+      Serial.println("SLA+R has been transmitted; ACK has been received, return ACK to continue reading (increment register to GYRO_XOUT_L)");
       break;
 
     case 72:
@@ -89,11 +99,23 @@ ISR(TWI_vect) {
       break;
 
     case 80:
+      //  Data byte has been received; ACK has been returned, give gyroValue the measurement data and return NACK for next data
 
+      gyroValue = ((uint16_t)TWDR << 8);  //  Set the high byte of gyroValue
+
+      TWCR = CLEAR_TWEA_FOR_NACK; //  Make sure NACK is returned
+
+      Serial.println("Data byte has been received; ACK has been returned, give gyroValue the measurement data and return NACK for next data");
       break;
 
     case 88:
+      //  Data byte has been received; NOT ACK has been returned, give gyroValue low byte of data and send stop condition
 
+      gyroValue |= TWDR;  //  Assign low byte of gyroValue
+
+      TWCR = SEND_STOP_CONDITION; //  Send stop condition
+
+      Serial.println("Data byte has been received; NOT ACK has been returned, give gyroValue low byte of data and send stop condition");
       break;
 
     default:
