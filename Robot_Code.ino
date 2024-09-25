@@ -18,7 +18,6 @@
 //  Initialise the TWI peripheral
 void twiInitialise(uint8_t bitRateGenerator) {
 
-  Serial.begin(9600);
 
   // Activate internal pullups for twi
   digitalWrite(SDA, 1);
@@ -50,6 +49,11 @@ ISR(TWI_vect) {
       break;
 
     case 16:
+      // A repeated start condition has been transmitted, now put slave registers address you want to read with read bit
+
+      TWDR = (TWAR & 254) | 1;  // Load SLA+R, R = 1
+
+      Serial.println("A repeated start condition has been transmitted, now put slave registers address you want to read with read bit");
 
       break;
 
@@ -61,8 +65,39 @@ ISR(TWI_vect) {
 
       break;
 
-    default:
 
+    case 40:
+      // Data byte has been transmitted; ACK has been received, send a repeated start to intiate reading of slaves register
+
+      TWCR = SEND_START_CONDITION;  // Setting the start bit so we transmit a repeated start
+
+      Serial.println("Data byte has been transmitted; ACK has been received, send a repeated start to intiate reading of slaves register");
+
+      break;
+
+    case 56:
+      // Arbitration lost in SLA+R or NOT ACK bit
+      Serial.println("Arbitration lost in SLA+R or NOT ACK bit");
+      break;
+
+    case 64:
+
+      break;
+
+    case 72:
+
+      break;
+
+    case 80:
+
+      break;
+
+    case 88:
+
+      break;
+
+    default:
+      Serial.println("Reached default case");
       break;
   }
 
@@ -82,6 +117,12 @@ void setup() {
   // Setup I2C registers for recieving data, initialise variables, set digital I/O pins
   
   sei();
+
+  Serial.begin(9600);
+
+  while(!Serial);
+
+  Serial.println("Serial begun");
 
   twiInitialise(18);
 
