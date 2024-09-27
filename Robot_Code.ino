@@ -12,6 +12,7 @@
 #define GYRO_XOUT_L 68
 #define SMPRT_DIV 25
 #define CONFIG 26
+#define PWR_MGMT_1 107
 #define SEND_START_CONDITION 101
 #define SEND_START_CONDITION_AND_SET_TWINT 229
 #define TWCR_INITIALISE 69
@@ -80,7 +81,7 @@ ISR(TWI_vect) {
         case 24:
           // SLA+W has been transmitted; ACK has been received
 
-          TWDR = 107; // Load register address
+          TWDR = PWR_MGMT_1; // Load power management 1 register
           break;
 
         case 32:
@@ -90,7 +91,7 @@ ISR(TWI_vect) {
 
         case 40:
           // Data byte has been transmitted; ACK has been received
-          
+
           if (myRegister & (1 << STN)) {
             IsrExitFlow = 3;
             isrFunction = 1;
