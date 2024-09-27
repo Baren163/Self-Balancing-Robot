@@ -5,31 +5,36 @@
 #include <avr/interrupt.h>
 
 #define CPU_clock 16000000
-#define SLAVE_ADDRESS 104
+#define GYRO_CONFIG 27
+#define FS_SEL0 3
+#define FS_SEL1 4
 #define GYRO_XOUT_H 67
 #define GYRO_XOUT_L 68
-
+#define SMPRT_DIV 25
+#define CONFIG 26
 #define SEND_START_CONDITION 101
+#define SEND_START_CONDITION_AND_SET_TWINT 229
 #define TWCR_INITIALISE 69
 #define SET_TWINT 197
-#define CLEAR_TWEA_FOR_NACK 5
-#define SEND_STOP_CONDITION 85
+#define CLEAR_TWEA_FOR_NACK_AND_SET_TWINT 133
+#define SEND_STOP_CONDITION 213
+#define SLAVE_ADDRESS 104
+#define DRC 7
+#define STN 6
+#define GVN 5
 
+uint8_t IsrExitFlow;
 uint8_t isrFunction;
-uint16_t gyroValue;
+int16_t gyroValue;  // data type 'short', signed 16 bit variable
+uint8_t myRegister;
 
 //#include <Wire.h> // The Wire library is what Arduino uses to communicate with I2C devices however I will be creating my own I2C driver
 
 
-
-
-
-  
 // TWI Functions
 
 //  Initialise the TWI peripheral
 void twiInitialise(uint8_t bitRateGenerator) {
-
 
   // Activate internal pullups for twi
   digitalWrite(SDA, 1);
@@ -54,6 +59,8 @@ ISR(TWI_vect) {
   Serial.print("Entering ISR with TWSR: ");
   Serial.println(TWSR);
 
+  IsrExitFlow = 0;
+
   TWCR = TWCR_INITIALISE; // Set TWINT to clear interrupt
 
   switch(isrFunction) {
@@ -65,7 +72,10 @@ ISR(TWI_vect) {
         
         case 8:
           //  Start condition has been transmitted
+          Serial.println("TWSR reads 8");
+          TWCR = TWCR_INITIALISE;
 
+          TWDR = (SLAVE_ADDRESS << 1);  // Load SLA + W
           break;
 
         case 16:
@@ -75,8 +85,9 @@ ISR(TWI_vect) {
 
         case 24:
           // SLA+W has been transmitted; ACK has been received
+          Serial.println("SLA+W has been transmitted; ACK has been received, sending RA");
 
-
+          TWDR = 107; // Load register address
           break;
 
         case 32:
@@ -91,6 +102,17 @@ ISR(TWI_vect) {
         
         case 48:
           // Data byte has been transmitted; NOT ACK has been received
+          if (myRegister & (1 << STN)) {
+            IsrExitFlow = 3;
+            isrFunction = 1;
+            break;
+          }
+
+          //Serial.println("Data byte has been transmitted; ACK has been received, sending '9'");
+
+          TWDR = 9; // Load decimal 9 into register 107 to clear sleep bit, disable temperature sensor and select Gyro X clock
+
+          myRegister |= (1 << STN); // stop_now++;
 
           break;
 
@@ -119,6 +141,8 @@ ISR(TWI_vect) {
       
       }
 
+      break;
+
     case 1:
     // We are reading the gyroscopes measurements
 
@@ -139,7 +163,7 @@ ISR(TWI_vect) {
         case 16:
           // A repeated start condition has been transmitted, now put slave registers address you want to read with read bit
 
-          TWDR = (TWAR & 254) | 1;  // Load SLA+R, R = 1
+          TWDR = ((SLAVE_ADDRESS << 1) + 1);  // Load SLA + R
 
           Serial.println("A repeated start condition has been transmitted, now put slave registers address you want to read with read bit");
 
@@ -158,7 +182,7 @@ ISR(TWI_vect) {
         case 40:
           // Data byte has been transmitted; ACK has been received, send a repeated start to intiate reading of slaves register
 
-          TWCR = SEND_START_CONDITION;  // Setting the start bit so we transmit a repeated start
+          IsrExitFlow = 1;  // Exit ISR with start condition (Repeated START)
 
           Serial.println("Data byte has been transmitted; ACK has been received, send a repeated start to intiate reading of slaves register");
 
@@ -172,9 +196,8 @@ ISR(TWI_vect) {
         case 64:
           // SLA+R has been transmitted; ACK has been received, return ACK to continue reading (increment register to GYRO_XOUT_L)
 
-          TWCR = TWCR_INITIALISE;  //  Make Sure ACK is sent after data is received
-
-          Serial.println("SLA+R has been transmitted; ACK has been received, return ACK to continue reading (increment register to GYRO_XOUT_L)");
+          // IsrExitFlow = 0;
+          
           break;
 
         case 72:
@@ -184,19 +207,21 @@ ISR(TWI_vect) {
         case 80:
           //  Data byte has been received; ACK has been returned, give gyroValue the measurement data and return NACK for next data
 
-          gyroValue = ((uint16_t)TWDR << 8);  //  Set the high byte of gyroValue
-
-          TWCR = CLEAR_TWEA_FOR_NACK; //  Make sure NACK is returned
+          IsrExitFlow = 2;  // Return NACK
 
           Serial.println("Data byte has been received; ACK has been returned, give gyroValue the measurement data and return NACK for next data");
           break;
 
         case 88:
-          //  Data byte has been received; NOT ACK has been returned, give gyroValue low byte of data and send stop condition
+          // Data byte has been received; NOT ACK has been returned, data byte will be store and STOP condition will be sent to end transmission
 
-          gyroValue |= TWDR;  //  Assign low byte of gyroValue
+          //gyroValue += ((uint16_t) (TWDR << 8));
 
-          TWCR = SEND_STOP_CONDITION; //  Send stop condition
+          gyroValue = gyroValue << 8;
+
+          gyroValue += TWDR;
+
+          IsrExitFlow = 3;
 
           Serial.println("Data byte has been received; NOT ACK has been returned, give gyroValue low byte of data and send stop condition");
           break;
@@ -206,10 +231,48 @@ ISR(TWI_vect) {
           break;
       }
 
+      break;
+
 
     default:
     break;
 
+  }
+
+  switch(IsrExitFlow) {
+
+    case 0:
+    TWCR = SET_TWINT; // 0b11000101
+    break;
+
+    case 1:
+    //Serial.println("Repeated start");
+    TWCR = SEND_START_CONDITION_AND_SET_TWINT;
+    break;
+
+    case 2:  
+    //Serial.println("Return NACK");
+    TWCR = CLEAR_TWEA_FOR_NACK_AND_SET_TWINT;
+
+    gyroValue = (TWDR);
+
+    //Serial.print("High byte stored in gyroValue: ");
+    //Serial.println(gyroValue);
+    break;
+
+    case 3:
+    //Serial.println("STOP condition will be sent");
+    TWCR = SEND_STOP_CONDITION;
+    myRegister |= (1 << DRC); // dataReadComplete = 1;
+
+    Serial.print("Gyro value = ");
+    
+    Serial.println(gyroValue);
+
+    break;
+
+    default:
+    break;
   }
 
   
@@ -227,8 +290,7 @@ ISR(TWI_vect) {
 
 void setup() {
   // Setup I2C registers for recieving data, initialise variables, set digital I/O pins
-  
-  sei();
+  sei();  // Enable global interrupts
 
   Serial.begin(9600);
 
@@ -236,28 +298,36 @@ void setup() {
 
   Serial.println("Serial begun");
 
-  twiInitialise(18);
+  gyroValue = 0;
 
-  pinMode(4, OUTPUT);
+  isrFunction = 0;  // Initialise MPU-6050
+
+  //stop_now = 0;
+  //dataReadComplete = 1;
+  //GVN = 0;
+  myRegister = 128;
+
+  twiInitialise(18);
 
 }
 
 void loop() {
  // Set I2C recieved data to variables, calculate angle of rotational displacement for the X axis, Implement PID control for motor speed
 
-  delay(200);
-
   TWCR = SEND_START_CONDITION;   // Setting control register bits
 
-  digitalWrite(4, HIGH);
-  delay(500);
-  digitalWrite(4, LOW);
-  delay(500);
+  if (myRegister & (1 << DRC)) {
+    // Transmit start condition and in interrupt clear the TWSTA bit
+    TWCR = SEND_START_CONDITION;
+    myRegister &= ~(1 << DRC); // dataReadComplete = 0;
+  }
 
   Serial.print("Gyro value = ");
   Serial.println(gyroValue);
   Serial.println(TWCR);
   Serial.println(TWSTA);
   Serial.println(TWSR)
+
+  delay(100);
   
 }
