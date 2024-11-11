@@ -29,15 +29,18 @@ Adafruit_DCMotor *myMotor = AFMS.getMotor(1);
 #define CLEAR_TWEA_FOR_NACK_AND_SET_TWINT 132
 #define SEND_STOP_CONDITION 212
 #define SLAVE_ADDRESS 104
-#define DRC 7
-#define STN 6
-#define GVN 5
-#define CWGD 4
+#define DRC 7 // Data read complete
+#define STN 6 // Stop Now
+#define GVN 5 // Gyro value negative
+#define CWG 4  //  Communicating with gyro
 
 uint8_t IsrExitFlow;
 uint8_t isrFunction;
 int16_t gyroValue;  // data type 'short', signed 16 bit variable
 uint8_t myRegister;
+
+unsigned long tempTime;
+unsigned long time;
 
 //#include <Wire.h> // The Wire library is what Arduino uses to communicate with I2C devices however I will be creating my own I2C driver
 
@@ -60,6 +63,11 @@ void twiInitialise(uint8_t bitRateGenerator) {
   //Serial.println("Initialised");
 
 }
+
+
+int16_t readGyroX()
+
+
 
 
 
@@ -102,10 +110,6 @@ void setup() {
 }
 
 
-int16_t getGyroRateX() {
-
-}
-
 
 void loop() {
   // Set I2C recieved data to variables, calculate angle of rotational displacement for the X axis, Implement PID control for motor speed
@@ -128,7 +132,7 @@ void loop() {
 
   delay(100);
 
-  myRegister |= (1 << CWGD);
+  myRegister |= (1 << CWG);
 
   if (myRegister & (1 << DRC)) {
   // Transmit start condition and in interrupt clear the TWSTA bit
@@ -138,10 +142,9 @@ void loop() {
 
   //Serial.println("Start condition sent");
 
-  timeA
 
     // While communication with gyro device bit is set
-  while (myRegister & (1 << CWGD)) {
+  while (myRegister & (1 << CWG)) {
 
     // While TWINT is 0 wait in this loop
     while (!(TWCR & (1 << TWINT))) {
@@ -348,12 +351,14 @@ void loop() {
       //Serial.println("STOP condition will be sent");
       TWCR = SEND_STOP_CONDITION;
       myRegister |= (1 << DRC); // dataReadComplete = 1
-      myRegister &= ~(1 << CWGD); // Communication with Gyro device = 0
+      myRegister &= ~(1 << CWG); // Communication with Gyro device = 0
 
       Serial.print("Gyro value = ");
 
-      gyroValue /= 10;
-      gyroValue += 53;
+     // gyroValue /= 10;
+      //gyroValue += 530;
+
+      gyroValue = ((float)gyroValue / 32767) * 250;
       
       Serial.println(gyroValue);
 
@@ -364,7 +369,6 @@ void loop() {
     }
 
   }
-
 
 
   
