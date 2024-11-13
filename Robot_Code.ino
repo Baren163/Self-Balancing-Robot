@@ -29,10 +29,10 @@ Adafruit_DCMotor *myMotor = AFMS.getMotor(1);
 #define CLEAR_TWEA_FOR_NACK_AND_SET_TWINT 132
 #define SEND_STOP_CONDITION 212
 #define SLAVE_ADDRESS 104
-#define DRC 7 // Data read complete
-#define STN 6 // Stop Now
-#define GVN 5 // Gyro value negative
-#define CWG 4  //  Communicating with gyro
+#define DRC 7    // Data read complete
+#define STN 6    // Stop Now
+#define GVN 5    // Gyro value negative
+#define CWMPU 4  //  Communicating with gyro
 
 uint8_t IsrExitFlow;
 uint8_t isrFunction;
@@ -54,18 +54,269 @@ void twiInitialise(uint8_t bitRateGenerator) {
   digitalWrite(SDA, 1);
   digitalWrite(SCL, 1);
 
-  TWCR = TWCR_INITIALISE;   // Setting control register bits
+  TWCR = TWCR_INITIALISE;  // Setting control register bits
 
   TWBR = bitRateGenerator;  // Setting TWBR to 18 for a SCL frequency of 100kHz
 
   TWSR &= !(1 << TWPS1) & !(1 << TWPS0);  // Setting pre scaler bits to zero (Pre scaler = 1)
 
   //Serial.println("Initialised");
-
 }
 
 
-int16_t readGyroX()
+void writeMPU(uint8_t registerToWrite, uint8_t valueToWrite) {
+
+  while (1) {
+
+    // While TWINT is 0 wait in this loop
+    while (!(TWCR & (1 << TWINT))) {
+      ;
+    }
+
+    TWCR = TWCR_INITIALISE;  // Set TWINT to clear interrupt
+
+    switch (TWSR) {
+
+      case 8:
+        //  Start condition has been transmitted
+        //Serial.println("TWSR reads 8");
+        TWCR = TWCR_INITIALISE;
+
+        TWDR = (SLAVE_ADDRESS << 1);  // Load SLA + W
+
+        break;
+
+      case 16:
+        // A repeated start condition has been transmitted
+
+        break;
+
+      case 24:
+        // SLA+W has been transmitted; ACK has been received
+
+        //Serial.println("SLA+W has been transmitted; ACK has been received, sending RA");
+
+        TWDR = registerToWrite;  // Load register address (107)
+
+        break;
+
+      case 32:
+        // SLA+W has been transmitted; NOT ACK has been received
+
+        break;
+
+      case 40:
+        // Data byte has been transmitted; ACK has been received
+
+        if (myRegister & (1 << STN)) {
+          IsrExitFlow = 3;
+          isrFunction = 1;
+          break;
+        }
+
+        //Serial.println("Data byte has been transmitted; ACK has been received, sending '9'");
+
+        TWDR = valueToWrite;  // Load decimal 9 into register 107 to clear sleep bit, disable temperature sensor and select Gyro X clock
+
+        myRegister |= (1 << STN);  // stop_now++;
+
+        break;
+
+      case 48:
+        // Data byte has been transmitted; NOT ACK has been received
+
+        break;
+
+      case 56:
+        // Arbitration lost in SLA+W or data bytes
+
+        break;
+
+      case 64:
+        // SLA+R has been transmitted; ACK has been received, data byte will be received and ACK will be returned
+
+        break;
+
+      case 80:
+        // Data byte has been received; ACK has been returned, data byte will be stored and NACK will be returned
+
+        break;
+
+      case 88:
+        // Data byte has been received; NOT ACK has been returned, data byte will be store and STOP condition will be sent to end transmission
+
+        break;
+
+      default:
+        break;
+    }
+
+    switch (IsrExitFlow) {
+
+      case 0:
+        TWCR = SET_TWINT;  // 0b11000101
+        break;
+
+      case 1:
+        //Serial.println("Repeated start");
+        TWCR = SEND_START_CONDITION_AND_SET_TWINT;
+        break;
+
+      case 2:
+        //Serial.println("Return NACK");
+        TWCR = CLEAR_TWEA_FOR_NACK_AND_SET_TWINT;
+
+        gyroValue = (TWDR);
+
+        //Serial.print("High byte stored in gyroValue: ");
+        //Serial.println(gyroValue);
+        break;
+
+      case 3:
+        //Serial.println("STOP condition will be sent");
+        TWCR = SEND_STOP_CONDITION;
+        return;
+        break;
+
+      default:
+        break;
+    }
+  }
+}
+
+
+int16_t readMPU(uint8_t registerToRead) {
+
+  int16_t readValue;
+
+  // While communication with gyro device bit is set
+  while (1) {
+
+    // While TWINT is 0 wait in this loop
+    while (!(TWCR & (1 << TWINT))) {
+      ;
+    }
+
+    IsrExitFlow = 0;
+
+    TWCR = TWCR_INITIALISE;  // Set TWINT to clear interrupt
+
+
+    // Read from GYRO_XOUT
+    switch (TWSR) {
+
+      case 8:
+        //  Start condition has been transmitted
+        //Serial.println("TWSR reads 8");
+        TWCR = TWCR_INITIALISE;
+
+        TWDR = (SLAVE_ADDRESS << 1);  // Load SLA + W
+        break;
+
+      case 16:
+        // A repeated start condition has been transmitted
+
+        TWDR = ((SLAVE_ADDRESS << 1) + 1);  // Load SLA + R
+        //Serial.println(TWDR);
+        break;
+
+      case 24:
+        // SLA+W has been transmitted; ACK has been received
+        TWDR = registerToRead;  // Write the gyro data register address to the slave
+        break;
+
+      case 32:
+        // SLA+W has been transmitted; NOT ACK has been received
+        break;
+
+      case 40:
+        // Data byte has been transmitted; ACK has been received
+        IsrExitFlow = 1;  // Exit ISR with start condition (Repeated START)
+        break;
+
+      case 48:
+        // Data byte has been transmitted; NOT ACK has been received
+        break;
+
+      case 56:
+        // Arbitration lost in SLA+W or data bytes
+        break;
+
+      case 64:
+        // SLA+R has been transmitted; ACK has been received, data byte will be received and ACK will be returned
+
+        // IsrExitFlow = 0;
+
+        break;
+
+      case 80:
+        // Data byte has been received; ACK has been returned, data byte will be stored and NACK will be returned
+
+        //Serial.print("TWDR value at supposed data receival: ");
+        //Serial.println(TWDR);
+
+        IsrExitFlow = 2;  // Return NACK
+
+        break;
+
+      case 88:
+        // Data byte has been received; NOT ACK has been returned, data byte will be store and STOP condition will be sent to end transmission
+
+        //gyroValue += ((uint16_t) (TWDR << 8));
+
+        readValue = readValue << 8;
+
+        readValue += TWDR;
+
+        IsrExitFlow = 3;
+
+        break;
+
+      default:
+        break;
+    }
+
+
+    switch (IsrExitFlow) {
+
+      case 0:
+        TWCR = SET_TWINT;  // 0b11000101
+        break;
+
+      case 1:
+        //Serial.println("Repeated start");
+        TWCR = SEND_START_CONDITION_AND_SET_TWINT;
+        break;
+
+      case 2:
+        //Serial.println("Return NACK");
+        TWCR = CLEAR_TWEA_FOR_NACK_AND_SET_TWINT;
+
+        readValue = (TWDR);
+
+        //Serial.print("High byte stored in gyroValue: ");
+        //Serial.println(gyroValue);
+        break;
+
+      case 3:
+        //Serial.println("STOP condition will be sent");
+        TWCR = SEND_STOP_CONDITION;
+
+        // gyroValue /= 10;
+        //gyroValue += 530;
+
+        readValue = ((float)readValue / 32767) * 250;
+
+        return readValue;
+
+        break;
+
+      default:
+        break;
+    }
+  }
+
+}
 
 
 
@@ -83,12 +334,13 @@ void setup() {
 
   //Serial.println("Serial begun");
 
-  if (!AFMS.begin()) {         // create with the default frequency 1.6KHz
-  // if (!AFMS.begin(1000)) {  // OR with a different frequency, say 1KHz
+  if (!AFMS.begin()) {  // create with the default frequency 1.6KHz
+                        // if (!AFMS.begin(1000)) {  // OR with a different frequency, say 1KHz
     //Serial.println("Could not find Motor Shield. Check wiring.");
-    while (1);
+    while (1)
+      ;
   }
- // Serial.println("Motor Shield found.");
+  // Serial.println("Motor Shield found.");
 
   // Set the speed to start, from 0 (off) to 255 (max speed)
   myMotor->setSpeed(150);
@@ -98,14 +350,16 @@ void setup() {
 
   gyroValue = 0;
 
-  isrFunction = 0;  // Initialise MPU-6050
-
   //stop_now = 0;
   //dataReadComplete = 1;
   //GVN = 0;
   myRegister = 128;
 
   twiInitialise(18);
+
+  TWCR = SEND_START_CONDITION;
+
+  writeMPU(107, 9); // Initialise the MPU
 
 }
 
@@ -132,248 +386,15 @@ void loop() {
 
   delay(100);
 
-  myRegister |= (1 << CWG);
 
-  if (myRegister & (1 << DRC)) {
-  // Transmit start condition and in interrupt clear the TWSTA bit
   TWCR = SEND_START_CONDITION;
-  myRegister &= ~(1 << DRC); // dataReadComplete = 0;
-  }
 
-  //Serial.println("Start condition sent");
+  gyroValue = readMPU(GYRO_XOUT_H);
 
+  Serial.print("Gyro value: ");
+  Serial.println(gyroValue);
 
-    // While communication with gyro device bit is set
-  while (myRegister & (1 << CWG)) {
 
-    // While TWINT is 0 wait in this loop
-    while (!(TWCR & (1 << TWINT))) {
-      ;
-    }
 
-    IsrExitFlow = 0;
-
-    TWCR = TWCR_INITIALISE; // Set TWINT to clear interrupt
-
-    switch (isrFunction) {
-
-      case 0:
-      // Initialise MPU-6050
-
-        switch (TWSR) {
-          
-          case 8:
-            //  Start condition has been transmitted
-            //Serial.println("TWSR reads 8");
-            TWCR = TWCR_INITIALISE;
-
-            TWDR = (SLAVE_ADDRESS << 1);  // Load SLA + W
-
-            break;
-
-          case 16:
-            // A repeated start condition has been transmitted
-
-            break;
-
-          case 24:
-            // SLA+W has been transmitted; ACK has been received
-
-            //Serial.println("SLA+W has been transmitted; ACK has been received, sending RA");
-
-            TWDR = 107; // Load register address
-
-            break;
-
-          case 32:
-            // SLA+W has been transmitted; NOT ACK has been received
-
-            break;
-
-          case 40:
-            // Data byte has been transmitted; ACK has been received
-
-            if (myRegister & (1 << STN)) {
-              IsrExitFlow = 3;
-              isrFunction = 1;
-              break;
-            }
-
-            //Serial.println("Data byte has been transmitted; ACK has been received, sending '9'");
-
-            TWDR = 9; // Load decimal 9 into register 107 to clear sleep bit, disable temperature sensor and select Gyro X clock
-
-            myRegister |= (1 << STN); // stop_now++;
-
-            break;
-          
-          case 48:
-            // Data byte has been transmitted; NOT ACK has been received
-
-            break;
-
-          case 56:
-            // Arbitration lost in SLA+W or data bytes
-
-            break;
-
-          case 64:
-            // SLA+R has been transmitted; ACK has been received, data byte will be received and ACK will be returned
-
-            break;
-
-          case 80:
-            // Data byte has been received; ACK has been returned, data byte will be stored and NACK will be returned
-
-            break;
-
-          case 88:
-            // Data byte has been received; NOT ACK has been returned, data byte will be store and STOP condition will be sent to end transmission
-
-            break;
-
-          default:
-            break;
-        
-        }
-
-
-      break;
-      
-
-      case 1:
-      // Read from GYRO_XOUT
-        switch (TWSR) {
-        
-          case 8:
-            //  Start condition has been transmitted
-            //Serial.println("TWSR reads 8");
-            TWCR = TWCR_INITIALISE;
-
-            TWDR = (SLAVE_ADDRESS << 1);  // Load SLA + W
-            break;
-
-          case 16:
-            // A repeated start condition has been transmitted
-
-            TWDR = ((SLAVE_ADDRESS << 1) + 1);  // Load SLA + R
-            //Serial.println(TWDR);
-            break;
-
-          case 24:
-            // SLA+W has been transmitted; ACK has been received
-            TWDR = GYRO_XOUT_H; // Write the gyro data register address to the slave
-            break;
-
-          case 32:
-            // SLA+W has been transmitted; NOT ACK has been received
-            break;
-
-          case 40:
-            // Data byte has been transmitted; ACK has been received
-            IsrExitFlow = 1;  // Exit ISR with start condition (Repeated START)
-            break;
-          
-          case 48:
-            // Data byte has been transmitted; NOT ACK has been received
-            break;
-
-          case 56:
-            // Arbitration lost in SLA+W or data bytes
-            break;
-
-          case 64:
-            // SLA+R has been transmitted; ACK has been received, data byte will be received and ACK will be returned
-
-            // IsrExitFlow = 0;
-
-            break;
-
-          case 80:
-            // Data byte has been received; ACK has been returned, data byte will be stored and NACK will be returned
-            
-            //Serial.print("TWDR value at supposed data receival: ");
-            //Serial.println(TWDR);
-
-            IsrExitFlow = 2;  // Return NACK
-
-            break;
-
-          case 88:
-            // Data byte has been received; NOT ACK has been returned, data byte will be store and STOP condition will be sent to end transmission
-
-            //gyroValue += ((uint16_t) (TWDR << 8));
-
-            gyroValue = gyroValue << 8;
-
-            gyroValue += TWDR;
-
-            IsrExitFlow = 3;
-
-            break;
-
-          default:
-            break;
-        
-        }
-
-      break;
-
-
-      default:
-      //Serial.println("Done");
-      break;
-
-    }
-
-    switch(IsrExitFlow) {
-
-      case 0:
-      TWCR = SET_TWINT; // 0b11000101
-      break;
-
-      case 1:
-      //Serial.println("Repeated start");
-      TWCR = SEND_START_CONDITION_AND_SET_TWINT;
-      break;
-
-      case 2:  
-      //Serial.println("Return NACK");
-      TWCR = CLEAR_TWEA_FOR_NACK_AND_SET_TWINT;
-
-      gyroValue = (TWDR);
-
-      //Serial.print("High byte stored in gyroValue: ");
-      //Serial.println(gyroValue);
-      break;
-
-      case 3:
-      //Serial.println("STOP condition will be sent");
-      TWCR = SEND_STOP_CONDITION;
-      myRegister |= (1 << DRC); // dataReadComplete = 1
-      myRegister &= ~(1 << CWG); // Communication with Gyro device = 0
-
-      Serial.print("Gyro value = ");
-
-     // gyroValue /= 10;
-      //gyroValue += 530;
-
-      gyroValue = ((float)gyroValue / 32767) * 250;
-      
-      Serial.println(gyroValue);
-
-      break;
-
-      default:
-      break;
-    }
-
-  }
-
-
-  
   //Serial.println(TWSR);
-
-  
-
 }
