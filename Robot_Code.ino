@@ -33,11 +33,13 @@ Adafruit_DCMotor *myMotor = AFMS.getMotor(1);
 #define STN 6    // Stop Now
 #define GVN 5    // Gyro value negative
 #define CWMPU 4  //  Communicating with gyro
+#define OFFSET -530
 
 uint8_t IsrExitFlow;
 uint8_t isrFunction;
 int16_t gyroValue;  // data type 'short', signed 16 bit variable
 uint8_t myRegister;
+float angle = 0;
 
 unsigned long tempTime;
 unsigned long time;
@@ -302,8 +304,8 @@ int16_t readMPU(uint8_t registerToRead) {
         //Serial.println("STOP condition will be sent");
         TWCR = SEND_STOP_CONDITION;
 
-        // gyroValue /= 10;
-        //gyroValue += 530;
+        // readValue /= 10;
+        readValue -= OFFSET;
 
         readValue = ((float)readValue / 32767) * 250;
 
@@ -391,10 +393,19 @@ void loop() {
 
   gyroValue = readMPU(GYRO_XOUT_H);
 
+  tempTime = millis();
+  time = (tempTime - time);
+  Serial.println(time);
+  angle += (0.1 * gyroValue);
+
   Serial.print("Gyro value: ");
   Serial.println(gyroValue);
 
+  Serial.print("Angle: ");
+  Serial.println(angle);
+  Serial.println(" ");
 
+  time = millis();
 
   //Serial.println(TWSR);
 }
