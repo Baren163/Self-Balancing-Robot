@@ -18,8 +18,11 @@ Adafruit_DCMotor *myMotor = AFMS.getMotor(1);
 #define GYRO_CONFIG 27
 #define FS_SEL0 3
 #define FS_SEL1 4
-#define GYRO_XOUT_H 67
-#define GYRO_XOUT_L 68
+#define GYRO_X_H 67
+#define GYRO_X_L 68
+#define ACCEL_Z_H 63
+#define ACCEL_Y_H 61
+#define ACCEL_X_H 59
 #define SMPRT_DIV 25
 #define CONFIG 26
 #define SEND_START_CONDITION 100
@@ -40,6 +43,9 @@ uint8_t isrFunction;
 int16_t gyroValue;  // data type 'short', signed 16 bit variable
 uint8_t myRegister;
 float angle = 0;
+float gyroAccelZ;
+float gyroAccelX;
+float gyroAccelY;
 
 unsigned long tempTime;
 unsigned long time;
@@ -204,7 +210,7 @@ int16_t readMPU(uint8_t registerToRead) {
     TWCR = TWCR_INITIALISE;  // Set TWINT to clear interrupt
 
 
-    // Read from GYRO_XOUT
+    // Read from GYRO_X
     switch (TWSR) {
 
       case 8:
@@ -389,21 +395,39 @@ void loop() {
   delay(100);
 
 
+  //TWCR = SEND_START_CONDITION;
+  //gyroValue = readMPU(GYRO_X_H);
+
   TWCR = SEND_START_CONDITION;
+  gyroAccelZ = readMPU(ACCEL_Z_H);
 
-  gyroValue = readMPU(GYRO_XOUT_H);
+  TWCR = SEND_START_CONDITION;
+  gyroAccelX = readMPU(59);
 
-  tempTime = millis();
-  time = (tempTime - time);
-  Serial.println(time);
-  angle += (0.1 * gyroValue);
+  TWCR = SEND_START_CONDITION;
+  gyroAccelY = readMPU(61);
 
-  Serial.print("Gyro value: ");
-  Serial.println(gyroValue);
+  //tempTime = millis();
+  //time = (tempTime - time);
+  //Serial.println(time);
+  //angle += (0.1 * gyroValue);
 
-  Serial.print("Angle: ");
-  Serial.println(angle);
+  //Serial.print("Gyro value: ");
+  //Serial.println(gyroValue);
+
+  Serial.print("Accel Z value: ");
+  Serial.println(gyroAccelZ);
+
+  Serial.print("Accel X value: ");
+  Serial.println(gyroAccelX);
+
+  Serial.print("Accel Y value: ");
+  Serial.println(gyroAccelY);
   Serial.println(" ");
+
+  // Serial.print("Angle: ");
+  // Serial.println(angle);
+  // Serial.println(" ");
 
   time = millis();
 
