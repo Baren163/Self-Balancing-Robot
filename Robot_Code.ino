@@ -7,7 +7,8 @@ Adafruit_MotorShield AFMS = Adafruit_MotorShield();
 // Adafruit_MotorShield AFMS = Adafruit_MotorShield(0x61);
 
 // Select which 'port' M1, M2, M3 or M4. In this case, M1
-Adafruit_DCMotor *myMotor = AFMS.getMotor(1);
+Adafruit_DCMotor *motorL = AFMS.getMotor(1);
+Adafruit_DCMotor *motorR = AFMS.getMotor(2);
 
 // Include libraries, define variables
 
@@ -37,15 +38,29 @@ Adafruit_DCMotor *myMotor = AFMS.getMotor(1);
 #define GVN 5    // Gyro value negative
 #define CWMPU 4  //  Communicating with gyro
 #define OFFSET -530
+#define RAD_TO_DEG 57.29578
+#define kp 14
+#define ki 0.10
+#define kd 0.6
+#define alpha 0.98
+
+// Experiment with putting the centre of mass higher to increase the time constant of the physical system allowing for the system to react better
 
 uint8_t IsrExitFlow;
 uint8_t isrFunction;
 int16_t gyroValue;  // data type 'short', signed 16 bit variable
 uint8_t myRegister;
-float angle = 0;
+float gyroAngle = 0;
 float gyroAccelZ;
-float gyroAccelX;
 float gyroAccelY;
+float accAngle;
+float error;
+float prevError;
+int16_t motorPower;
+float motorPowerIntegral;
+float angle;
+float prevAngle;
+float target;
 
 unsigned long tempTime;
 unsigned long time;
@@ -330,8 +345,6 @@ int16_t readMPU(uint8_t registerToRead) {
 
 
 
-
-
 void setup() {
   // Setup I2C registers for recieving data, initialise variables, set digital I/O pins
   sei();  // Enable global interrupts
@@ -351,10 +364,15 @@ void setup() {
   // Serial.println("Motor Shield found.");
 
   // Set the speed to start, from 0 (off) to 255 (max speed)
-  myMotor->setSpeed(150);
-  myMotor->run(FORWARD);
+  motorL->setSpeed(150);
+  motorL->run(FORWARD);
   // turn on motor
-  myMotor->run(RELEASE);
+  motorL->run(RELEASE);
+
+  motorR->setSpeed(150);
+  motorR->run(FORWARD);
+  // turn on motor
+  motorR->run(RELEASE);
 
   gyroValue = 0;
 
@@ -368,6 +386,19 @@ void setup() {
   TWCR = SEND_START_CONDITION;
 
   writeMPU(107, 9); // Initialise the MPU
+
+
+  // Set start angle as balance point
+
+  TWCR = SEND_START_CONDITION;
+  gyroAccelZ = readMPU(ACCEL_Z_H);
+
+  TWCR = SEND_START_CONDITION;
+  gyroAccelY = readMPU(ACCEL_Y_H);
+
+  // Calculate accAngle
+  accAngle = atan2(gyroAccelY, gyroAccelZ);
+  accAngle *= RAD_TO_DEG;
 
 }
 
@@ -392,44 +423,73 @@ void loop() {
   //   delay(10);
   // }
 
-  delay(100);
+  delay(10);
 
 
-  //TWCR = SEND_START_CONDITION;
-  //gyroValue = readMPU(GYRO_X_H);
+  // Take Readings
+  TWCR = SEND_START_CONDITION;
+  gyroValue = readMPU(GYRO_X_H);
 
   TWCR = SEND_START_CONDITION;
   gyroAccelZ = readMPU(ACCEL_Z_H);
 
   TWCR = SEND_START_CONDITION;
-  gyroAccelX = readMPU(59);
+  gyroAccelY = readMPU(ACCEL_Y_H);
 
-  TWCR = SEND_START_CONDITION;
-  gyroAccelY = readMPU(61);
+  // Calculate accAngle
+  accAngle = atan2(gyroAccelY, gyroAccelZ);
+  accAngle *= RAD_TO_DEG;
 
-  //tempTime = millis();
-  //time = (tempTime - time);
-  //Serial.println(time);
-  //angle += (0.1 * gyroValue);
+  // Calculate gyroAngle
+  tempTime = millis();
+  time = (tempTime - time);
+  gyroAngle = (0.01 * gyroValue);
 
-  //Serial.print("Gyro value: ");
-  //Serial.println(gyroValue);
 
-  Serial.print("Accel Z value: ");
-  Serial.println(gyroAccelZ);
 
-  Serial.print("Accel X value: ");
-  Serial.println(gyroAccelX);
 
-  Serial.print("Accel Y value: ");
-  Serial.println(gyroAccelY);
-  Serial.println(" ");
+  // Complementary Filter
+  angle = (alpha * (angle + gyroAngle)) + ((1 - alpha) * accAngle);
+
+
+  // PD Control
+  error = angle - target;
+
+  motorPower = error * kp;
+
+  motorPowerIntegral += (error * time) * ki;
+  motorPower += motorPowerIntegral;
+
+  motorPower += gyroValue * kd;
+
+  // Serial.print("motorPowerIntegral: ");
+  // Serial.println(motorPowerIntegral);
+
+  // Serial.print("Motor Power: ");
+  // Serial.println(motorPower);
+
+
+  if (motorPower < 0) {
+    motorL->run(FORWARD);
+    motorR->run(FORWARD);
+  } else {
+    motorL->run(BACKWARD);
+    motorR->run(BACKWARD);
+  }
+
+  motorL->setSpeed(abs(motorPower));
+  motorR->setSpeed(abs(motorPower));
+
+
+
 
   // Serial.print("Angle: ");
   // Serial.println(angle);
   // Serial.println(" ");
 
   time = millis();
+  prevError = error;
+  prevAngle = angle;
 
   //Serial.println(TWSR);
 }
