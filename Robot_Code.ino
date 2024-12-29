@@ -40,11 +40,11 @@ Adafruit_DCMotor *motorR = AFMS.getMotor(2);
 #define OFFSET -530
 #define RAD_TO_DEG 57.29578
 #define kp 14
-#define ki 0.10
-#define kd 0.6
+#define ki 0.15
+#define kd 0.9
 #define alpha 0.98
 
-// Experiment with putting the centre of mass higher to increase the time constant of the physical system allowing for the system to react better
+// Experiment with putting the centre of mass higher to increase the time constant of the physical system allowing for the system to react faster relative to the physical system (inverted pendulum)
 
 uint8_t IsrExitFlow;
 uint8_t isrFunction;
@@ -458,6 +458,11 @@ void loop() {
   motorPower = error * kp;
 
   motorPowerIntegral += (error * time) * ki;
+  if (motorPowerIntegral > 254) {
+    motorPowerIntegral = 255;
+  } else if (motorPowerIntegral < -254) {
+    motorPowerIntegral = -255;
+  }
   motorPower += motorPowerIntegral;
 
   motorPower += gyroValue * kd;
@@ -467,6 +472,12 @@ void loop() {
 
   // Serial.print("Motor Power: ");
   // Serial.println(motorPower);
+
+  if (motorPower > 254) {
+    motorPower = 255;
+  } else if (motorPower < -254) {
+    motorPower = -255;
+  }
 
 
   if (motorPower < 0) {
