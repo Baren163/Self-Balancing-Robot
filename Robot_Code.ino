@@ -44,8 +44,6 @@ Adafruit_DCMotor *motorR = AFMS.getMotor(2);
 #define kd 0.9
 #define alpha 0.98
 
-// Experiment with putting the centre of mass higher to increase the time constant of the physical system allowing for the system to react faster relative to the physical system (inverted pendulum)
-
 uint8_t IsrExitFlow;
 uint8_t isrFunction;
 int16_t gyroValue;  // data type 'short', signed 16 bit variable
@@ -407,21 +405,6 @@ void setup() {
 void loop() {
   // Set I2C recieved data to variables, calculate angle of rotational displacement for the X axis, Implement PID control for motor speed
 
-  //Serial.println("Begin");
-
-  // if (gyroValue > 50) {
-  //   myMotor->run(FORWARD);
-  //   myMotor->setSpeed(250);
-  //   delay(10);
-  // } else if (gyroValue < -50) {
-  //   myMotor->run(BACKWARD);
-  //   myMotor->setSpeed(250);
-  //   delay(10);
-  // } else {
-  //   myMotor->run(RELEASE);
-  //   myMotor->setSpeed(0);
-  //   delay(10);
-  // }
 
   delay(10);
 
@@ -457,6 +440,7 @@ void loop() {
 
   motorPower = error * kp;
 
+  // Calculate the integral for PID
   motorPowerIntegral += (error * time) * ki;
   if (motorPowerIntegral > 254) {
     motorPowerIntegral = 255;
@@ -467,19 +451,15 @@ void loop() {
 
   motorPower += gyroValue * kd;
 
-  // Serial.print("motorPowerIntegral: ");
-  // Serial.println(motorPowerIntegral);
 
-  // Serial.print("Motor Power: ");
-  // Serial.println(motorPower);
-
+  // Limit motor speed
   if (motorPower > 254) {
     motorPower = 255;
   } else if (motorPower < -254) {
     motorPower = -255;
   }
 
-
+  // Determine direction to drive motor in
   if (motorPower < 0) {
     motorL->run(FORWARD);
     motorR->run(FORWARD);
@@ -492,15 +472,8 @@ void loop() {
   motorR->setSpeed(abs(motorPower));
 
 
-
-
-  // Serial.print("Angle: ");
-  // Serial.println(angle);
-  // Serial.println(" ");
-
   time = millis();
   prevError = error;
   prevAngle = angle;
 
-  //Serial.println(TWSR);
 }
