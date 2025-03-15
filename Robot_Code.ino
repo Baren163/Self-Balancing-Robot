@@ -382,7 +382,6 @@ void setup() {
   twiInitialise(18);
 
   TWCR = SEND_START_CONDITION;
-
   writeMPU(107, 9); // Initialise the MPU
 
 
@@ -410,6 +409,7 @@ void loop() {
 
 
   // Take Readings
+
   TWCR = SEND_START_CONDITION;
   gyroValue = readMPU(GYRO_X_H);
 
@@ -419,9 +419,11 @@ void loop() {
   TWCR = SEND_START_CONDITION;
   gyroAccelY = readMPU(ACCEL_Y_H);
 
+
   // Calculate accAngle
   accAngle = atan2(gyroAccelY, gyroAccelZ);
   accAngle *= RAD_TO_DEG;
+
 
   // Calculate gyroAngle
   tempTime = millis();
@@ -429,18 +431,16 @@ void loop() {
   gyroAngle = (0.01 * gyroValue);
 
 
-
-
   // Complementary Filter
   angle = (alpha * (angle + gyroAngle)) + ((1 - alpha) * accAngle);
 
 
-  // PD Control
+  // PID Control
+  // Proportional
   error = angle - target;
-
   motorPower = error * kp;
 
-  // Calculate the integral for PID
+  // Integral
   motorPowerIntegral += (error * time) * ki;
   if (motorPowerIntegral > 254) {
     motorPowerIntegral = 255;
@@ -449,10 +449,11 @@ void loop() {
   }
   motorPower += motorPowerIntegral;
 
+  // Derivative (already given from gyroscope value)
   motorPower += gyroValue * kd;
 
 
-  // Limit motor speed
+  // Limit motor speed (so it doesn't 'overflow')
   if (motorPower > 254) {
     motorPower = 255;
   } else if (motorPower < -254) {
