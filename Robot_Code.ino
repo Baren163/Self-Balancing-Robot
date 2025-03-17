@@ -1,15 +1,4 @@
 
-// #include <Adafruit_MotorShield.h>
-
-// // Create the motor shield object with the default I2C address
-// Adafruit_MotorShield AFMS = Adafruit_MotorShield();
-// // Or, create it with a different I2C address (say for stacking)
-// // Adafruit_MotorShield AFMS = Adafruit_MotorShield(0x61);
-
-// // Select which 'port' M1, M2, M3 or M4. In this case, M1
-// Adafruit_DCMotor *motorL = AFMS.getMotor(1);
-// Adafruit_DCMotor *motorR = AFMS.getMotor(2);
-
 // Include libraries, define variables
 
 #include <avr/io.h>
@@ -55,7 +44,6 @@ float accAngle;
 float error;
 float prevError;
 int16_t motorPower;
-int16_t prevMotorPower;
 float motorPowerIntegral;
 float angle;
 float prevAngle;
@@ -361,9 +349,12 @@ int16_t readMPU(uint8_t registerToRead) {
 
 
 
-
 void setup() {
   // Setup I2C registers for recieving data, initialise variables, set digital I/O pins
+
+  // pinMode(7, OUTPUT);
+  // pinMode(6, OUTPUT);
+
   sei();  // Enable global interrupts
 
   Serial.begin(9600);
@@ -371,25 +362,6 @@ void setup() {
   while(!Serial);
 
   Serial.println("Serial begun");
-
-  // if (!AFMS.begin()) {  // create with the default frequency 1.6KHz
-  //                       // if (!AFMS.begin(1000)) {  // OR with a different frequency, say 1KHz
-  //   //Serial.println("Could not find Motor Shield. Check wiring.");
-  //   while (1)
-  //     ;
-  // }
-  // Serial.println("Motor Shield found.");
-
-  // // Set the speed to start, from 0 (off) to 255 (max speed)
-  // motorL->setSpeed(150);
-  // motorL->run(FORWARD);
-  // // turn on motor
-  // motorL->run(RELEASE);
-
-  // motorR->setSpeed(150);
-  // motorR->run(FORWARD);
-  // // turn on motor
-  // motorR->run(RELEASE);
 
   gyroValue = 0;
 
@@ -418,7 +390,6 @@ void setup() {
 
   initialiseAndStartPwmTimer();
   
-  prevMotorPower = 0;
 
 }
 
@@ -490,43 +461,41 @@ void loop() {
 
   Serial.println(motorPower);
 
-
+  // Shoot-through prevention
   if (motorPower > 0) {
 
     if (positiveSwitchDelay > 0) {
+      // Serial.println("Clearing pins");
       // Close all MOSFET's
-      Serial.println("Clearing pins");
-      //delay(1);
-      //positiveSwitchDelay = 0;
-      //negativeSwitchDelay = 1;
+      // digitalWrite(7, LOW);
+      // digitalWrite(6, LOW);
+      delay(10);
+      positiveSwitchDelay = 0;
+      negativeSwitchDelay = 1;
       // Then set respective pins to HIGH
+      // digitalWrite(7, HIGH);
     }
 
   } else if (motorPower < 0) {
 
       if (negativeSwitchDelay > 0) {
-        Serial.println("Clearing pins");
+        // Serial.println("Clearing pins");
         // Close all MOSFET's
-        //delay(1);
-        //positiveSwitchDelay = 1;
-        //negativeSwitchDelay = 0;
+        // digitalWrite(7, LOW);
+        // digitalWrite(6, LOW);
+        delay(10);
+        positiveSwitchDelay = 1;
+        negativeSwitchDelay = 0;
         // Then set respective pins to HIGH
+        // digitalWrite(6, HIGH);
       }
 
   }
-
-
-  // Before setting the pins to drive the motors I will implement a 'dead zone' between -3% and 3% power/PWM output
-  //where in this region the pins will all be set to 0 (all MOSFETS closed) so as to avoid 'shoot-through' where
-  //both MOSFET's on one side are on at the same time, shorting the driver. As well as this, I will make it so that if
-  //there is a large jump from -ve to +ve thereby avoiding the 'deadzone', there will be a short delay, for example 1mS
-  //where the pins will be reset then the delay will occur and then the pins are allowed to be set again.
 
   
   setPWM(abs(motorPower));
   
   prevError = error;
   prevAngle = angle;
-  prevMotorPower = motorPower;
 
 }
