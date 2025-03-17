@@ -1,14 +1,14 @@
 
-#include <Adafruit_MotorShield.h>
+// #include <Adafruit_MotorShield.h>
 
-// Create the motor shield object with the default I2C address
-Adafruit_MotorShield AFMS = Adafruit_MotorShield();
-// Or, create it with a different I2C address (say for stacking)
-// Adafruit_MotorShield AFMS = Adafruit_MotorShield(0x61);
+// // Create the motor shield object with the default I2C address
+// Adafruit_MotorShield AFMS = Adafruit_MotorShield();
+// // Or, create it with a different I2C address (say for stacking)
+// // Adafruit_MotorShield AFMS = Adafruit_MotorShield(0x61);
 
-// Select which 'port' M1, M2, M3 or M4. In this case, M1
-Adafruit_DCMotor *motorL = AFMS.getMotor(1);
-Adafruit_DCMotor *motorR = AFMS.getMotor(2);
+// // Select which 'port' M1, M2, M3 or M4. In this case, M1
+// Adafruit_DCMotor *motorL = AFMS.getMotor(1);
+// Adafruit_DCMotor *motorR = AFMS.getMotor(2);
 
 // Include libraries, define variables
 
@@ -39,10 +39,10 @@ Adafruit_DCMotor *motorR = AFMS.getMotor(2);
 #define CWMPU 4  //  Communicating with gyro
 #define OFFSET -530
 #define RAD_TO_DEG 57.29578
-#define kp 14
+#define kp 3
 #define ki 0.15
 #define kd 0.9
-#define alpha 0.98
+#define alpha 0.9
 
 uint8_t IsrExitFlow;
 uint8_t isrFunction;
@@ -60,6 +60,7 @@ float angle;
 float prevAngle;
 float target;
 
+unsigned long timeCalculator;
 unsigned long tempTime;
 unsigned long time;
 
@@ -347,30 +348,30 @@ void setup() {
   // Setup I2C registers for recieving data, initialise variables, set digital I/O pins
   sei();  // Enable global interrupts
 
-  //Serial.begin(9600);
+  Serial.begin(9600);
 
-  //while(!Serial);
+  while(!Serial);
 
-  //Serial.println("Serial begun");
+  Serial.println("Serial begun");
 
-  if (!AFMS.begin()) {  // create with the default frequency 1.6KHz
-                        // if (!AFMS.begin(1000)) {  // OR with a different frequency, say 1KHz
-    //Serial.println("Could not find Motor Shield. Check wiring.");
-    while (1)
-      ;
-  }
+  // if (!AFMS.begin()) {  // create with the default frequency 1.6KHz
+  //                       // if (!AFMS.begin(1000)) {  // OR with a different frequency, say 1KHz
+  //   //Serial.println("Could not find Motor Shield. Check wiring.");
+  //   while (1)
+  //     ;
+  // }
   // Serial.println("Motor Shield found.");
 
-  // Set the speed to start, from 0 (off) to 255 (max speed)
-  motorL->setSpeed(150);
-  motorL->run(FORWARD);
-  // turn on motor
-  motorL->run(RELEASE);
+  // // Set the speed to start, from 0 (off) to 255 (max speed)
+  // motorL->setSpeed(150);
+  // motorL->run(FORWARD);
+  // // turn on motor
+  // motorL->run(RELEASE);
 
-  motorR->setSpeed(150);
-  motorR->run(FORWARD);
-  // turn on motor
-  motorR->run(RELEASE);
+  // motorR->setSpeed(150);
+  // motorR->run(FORWARD);
+  // // turn on motor
+  // motorR->run(RELEASE);
 
   gyroValue = 0;
 
@@ -385,7 +386,7 @@ void setup() {
   writeMPU(107, 9); // Initialise the MPU
 
 
-  // Set start angle as balance point
+  // Set start angle as balance point(target)
 
   TWCR = SEND_START_CONDITION;
   gyroAccelZ = readMPU(ACCEL_Z_H);
@@ -396,6 +397,7 @@ void setup() {
   // Calculate accAngle
   accAngle = atan2(gyroAccelY, gyroAccelZ);
   accAngle *= RAD_TO_DEG;
+  
 
 }
 
@@ -427,21 +429,26 @@ void loop() {
 
   // Calculate gyroAngle
   tempTime = millis();
-  time = (tempTime - time);
+  timeCalculator = (tempTime - time);
   gyroAngle = (0.01 * gyroValue);
 
+  time = millis();
+
+ // Serial.println(timeCalculator);
 
   // Complementary Filter
   angle = (alpha * (angle + gyroAngle)) + ((1 - alpha) * accAngle);
 
+  //Serial.println(angle);
+
 
   // PID Control
   // Proportional
-  error = angle - target;
+  error = angle - target; // At the moment target is just 0
   motorPower = error * kp;
 
   // Integral
-  motorPowerIntegral += (error * time) * ki;
+  motorPowerIntegral += (error * timeCalculator) * ki;
   if (motorPowerIntegral > 254) {
     motorPowerIntegral = 255;
   } else if (motorPowerIntegral < -254) {
@@ -453,27 +460,41 @@ void loop() {
   motorPower += gyroValue * kd;
 
 
-  // Limit motor speed (so it doesn't 'overflow')
-  if (motorPower > 254) {
-    motorPower = 255;
-  } else if (motorPower < -254) {
-    motorPower = -255;
-  }
+  // // Limit motor speed (so it doesn't 'overflow')
+  // if (motorPower > 254) {
+  //   motorPower = 255;
+  // } else if (motorPower < -254) {
+  //   motorPower = -255;
+  // }
 
-  // Determine direction to drive motor in
-  if (motorPower < 0) {
-    motorL->run(FORWARD);
-    motorR->run(FORWARD);
+  Serial.println(motorPower);
+
+  // Before setting the pins to drive the motors I will implement a 'dead zone' between -3% and 3% power/PWM output
+  //where in this region the pins will all be set to 0 (all MOSFETS closed) so as to avoid 'shoot-through' where
+  //both MOSFET's on one side are on at the same time, shorting the driver. As well as this, I will make it so that if
+  //there is a large jump from -ve to +ve thereby avoiding the 'deadzone', there will be a short delay, for example 1mS
+  //where the pins will be reset then the delay will occur and then the pins are allowed to be set again.
+
+  if((motorPower < 8) & (motorPower > -8)) {
+    ;
+    Serial.println("Clearing Pins");
   } else {
-    motorL->run(BACKWARD);
-    motorR->run(BACKWARD);
+    ;
+
+  // // Determine direction to drive motor in
+  // if (motorPower < 0) {
+  //   motorL->run(FORWARD);
+  //   motorR->run(FORWARD);
+  // } else {
+  //   motorL->run(BACKWARD);
+  //   motorR->run(BACKWARD);
+  // }
+
+  // motorL->setSpeed(abs(motorPower));
+  // motorR->setSpeed(abs(motorPower));
   }
 
-  motorL->setSpeed(abs(motorPower));
-  motorR->setSpeed(abs(motorPower));
-
-
-  time = millis();
+  
   prevError = error;
   prevAngle = angle;
 
