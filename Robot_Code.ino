@@ -42,7 +42,7 @@
 #define kp 3
 #define ki 0.15
 #define kd 0.9
-#define alpha 0.9
+#define alpha 0.98
 
 uint8_t IsrExitFlow;
 uint8_t isrFunction;
@@ -55,10 +55,13 @@ float accAngle;
 float error;
 float prevError;
 int16_t motorPower;
+int16_t prevMotorPower;
 float motorPowerIntegral;
 float angle;
 float prevAngle;
 float target;
+uint8_t positiveSwitchDelay = 1;
+uint8_t negativeSwitchDelay = 1;
 
 unsigned long timeCalculator;
 unsigned long tempTime;
@@ -67,7 +70,22 @@ unsigned long time;
 //#include <Wire.h> // The Wire library is what Arduino uses to communicate with I2C devices however I will be creating my own I2C driver
 
 
-// TWI Functions
+void initialiseAndStartPwmTimer() {
+
+  pinMode(9, OUTPUT);  // OC1A is on Pin 9
+
+  TCCR1A = (1 << COM1A1) | (1 << WGM10);  // Fast PWM, Non-inverting mode
+  TCCR1B = (1 << WGM12) | (1 << CS12);  // Prescaler 256
+
+}
+
+
+void setPWM(uint8_t outputCompareValue) {
+
+  OCR1A = outputCompareValue;
+
+}
+
 
 //  Initialise the TWI peripheral
 void twiInitialise(uint8_t bitRateGenerator) {
@@ -397,7 +415,10 @@ void setup() {
   // Calculate accAngle
   accAngle = atan2(gyroAccelY, gyroAccelZ);
   accAngle *= RAD_TO_DEG;
+
+  initialiseAndStartPwmTimer();
   
+  prevMotorPower = 0;
 
 }
 
@@ -407,7 +428,7 @@ void loop() {
   // Set I2C recieved data to variables, calculate angle of rotational displacement for the X axis, Implement PID control for motor speed
 
 
-  delay(10);
+  delay(1);
 
 
   // Take Readings
@@ -430,16 +451,16 @@ void loop() {
   // Calculate gyroAngle
   tempTime = millis();
   timeCalculator = (tempTime - time);
-  gyroAngle = (0.01 * gyroValue);
+  gyroAngle = ((timeCalculator/1000) * gyroValue);
 
   time = millis();
 
- // Serial.println(timeCalculator);
+  // Serial.println(timeCalculator);
 
   // Complementary Filter
   angle = (alpha * (angle + gyroAngle)) + ((1 - alpha) * accAngle);
 
-  //Serial.println(angle);
+  // Serial.println(angle);
 
 
   // PID Control
@@ -460,14 +481,40 @@ void loop() {
   motorPower += gyroValue * kd;
 
 
-  // // Limit motor speed (so it doesn't 'overflow')
-  // if (motorPower > 254) {
-  //   motorPower = 255;
-  // } else if (motorPower < -254) {
-  //   motorPower = -255;
-  // }
+  // Limit motor speed (so it doesn't 'overflow')
+  if (motorPower > 254) {
+    motorPower = 255;
+  } else if (motorPower < -254) {
+    motorPower = -255;
+  }
 
   Serial.println(motorPower);
+
+
+  if (motorPower > 0) {
+
+    if (positiveSwitchDelay > 0) {
+      // Close all MOSFET's
+      Serial.println("Clearing pins");
+      //delay(1);
+      //positiveSwitchDelay = 0;
+      //negativeSwitchDelay = 1;
+      // Then set respective pins to HIGH
+    }
+
+  } else if (motorPower < 0) {
+
+      if (negativeSwitchDelay > 0) {
+        Serial.println("Clearing pins");
+        // Close all MOSFET's
+        //delay(1);
+        //positiveSwitchDelay = 1;
+        //negativeSwitchDelay = 0;
+        // Then set respective pins to HIGH
+      }
+
+  }
+
 
   // Before setting the pins to drive the motors I will implement a 'dead zone' between -3% and 3% power/PWM output
   //where in this region the pins will all be set to 0 (all MOSFETS closed) so as to avoid 'shoot-through' where
@@ -475,27 +522,11 @@ void loop() {
   //there is a large jump from -ve to +ve thereby avoiding the 'deadzone', there will be a short delay, for example 1mS
   //where the pins will be reset then the delay will occur and then the pins are allowed to be set again.
 
-  if((motorPower < 8) & (motorPower > -8)) {
-    ;
-    Serial.println("Clearing Pins");
-  } else {
-    ;
-
-  // // Determine direction to drive motor in
-  // if (motorPower < 0) {
-  //   motorL->run(FORWARD);
-  //   motorR->run(FORWARD);
-  // } else {
-  //   motorL->run(BACKWARD);
-  //   motorR->run(BACKWARD);
-  // }
-
-  // motorL->setSpeed(abs(motorPower));
-  // motorR->setSpeed(abs(motorPower));
-  }
-
+  
+  setPWM(abs(motorPower));
   
   prevError = error;
   prevAngle = angle;
+  prevMotorPower = motorPower;
 
 }
