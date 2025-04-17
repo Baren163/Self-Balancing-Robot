@@ -22,10 +22,7 @@
 #define CLEAR_TWEA_FOR_NACK_AND_SET_TWINT 132
 #define SEND_STOP_CONDITION 212
 #define SLAVE_ADDRESS 104
-#define DRC 7    // Data read complete
 #define STN 6    // Stop Now
-#define GVN 5    // Gyro value negative
-#define CWMPU 4  //  Communicating with gyro
 #define OFFSET -530
 #define RAD_TO_DEG 57.29578
 #define kp 3
@@ -352,16 +349,18 @@ int16_t readMPU(uint8_t registerToRead) {
 void setup() {
   // Setup I2C registers for recieving data, initialise variables, set digital I/O pins
 
-  // pinMode(7, OUTPUT);
-  // pinMode(6, OUTPUT);
+  pinMode(13, OUTPUT);
+  pinMode(12, OUTPUT);
+  pinMode(11, OUTPUT);
+  pinMode(10, OUTPUT);
 
   sei();  // Enable global interrupts
 
-  Serial.begin(9600);
+  // Serial.begin(9600);
 
-  while(!Serial);
+  // while(!Serial);
 
-  Serial.println("Serial begun");
+  // Serial.println("Serial begun");
 
   gyroValue = 0;
 
@@ -459,7 +458,7 @@ void loop() {
     motorPower = -255;
   }
 
-  Serial.println(motorPower);
+  // Serial.println(motorPower);
 
   // Shoot-through prevention
   if (motorPower > 0) {
@@ -467,13 +466,16 @@ void loop() {
     if (positiveSwitchDelay > 0) {
       // Serial.println("Clearing pins");
       // Close all MOSFET's
-      // digitalWrite(7, LOW);
-      // digitalWrite(6, LOW);
+      digitalWrite(13, LOW);
+      digitalWrite(12, LOW);
+      digitalWrite(11, LOW);
+      digitalWrite(10, LOW);
       delay(10);
       positiveSwitchDelay = 0;
       negativeSwitchDelay = 1;
       // Then set respective pins to HIGH
-      // digitalWrite(7, HIGH);
+      digitalWrite(13, HIGH);
+      digitalWrite(12, HIGH);
     }
 
   } else if (motorPower < 0) {
@@ -481,13 +483,16 @@ void loop() {
       if (negativeSwitchDelay > 0) {
         // Serial.println("Clearing pins");
         // Close all MOSFET's
-        // digitalWrite(7, LOW);
-        // digitalWrite(6, LOW);
+        digitalWrite(13, LOW);
+        digitalWrite(12, LOW);
+        digitalWrite(11, LOW);
+        digitalWrite(10, LOW);
         delay(10);
         positiveSwitchDelay = 1;
         negativeSwitchDelay = 0;
         // Then set respective pins to HIGH
-        // digitalWrite(6, HIGH);
+        digitalWrite(11, HIGH);
+        digitalWrite(10, HIGH);
       }
 
   }
